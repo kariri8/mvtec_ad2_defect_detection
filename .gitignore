@@ -7,3 +7,5 @@ __pycache__/
 *.safetensors
 *pth
 *.txt
+!experiments/src/experiment_3/results/exp3_sheet_metal_sigma_results/000_regular.png
+!experiments/src/experiment_3/results/exp3_vial_sigma_results/000_regular.png

@@ -28,7 +28,7 @@ Extracts frozen **DINOv3** (`facebook/dinov3-vitb16-pretrain-lvd1689m`) patch fe
 - Training: random 15% spatial mask, MSE loss on masked tokens only
 - Inference: 4-pass grid inference (2×2 offset stride), cosine distance heatmap upsampled to original resolution
 
-### Experiment 3 — Latent MAE / Transformer Predictor (`latent_mae_experiment.py`)
+### Experiment 3 — Latent MAE / Transformer Predictor (`tf_experiment.py`)
 
 Replaces the CNN predictor from Experiment 2 with a **Transformer encoder** that operates directly on the flattened DINOv3 feature sequence. Masked tokens are replaced with a learnable mask token before being passed through the Transformer, giving the model global context to fill in missing patches.
 
