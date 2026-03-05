@@ -87,7 +87,7 @@ Sample visualisations from Experiment 3 (columns: original image | latent cosine
 
 ---
 
-## Final Run — All Categories (`final_train_all.py`)
+## Final Run — All Categories (`train_test.py`)
 
 Scales Experiment 3 to all 8 MVTec AD2 categories using **parallel training across 2 GPUs**.
 
