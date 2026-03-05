@@ -12,9 +12,6 @@ from torch.optim import AdamW
 from sklearn.metrics import f1_score
 import logging
 
-# ---------------------------------------------------------
-# 1. CONFIGURATION & LOGGING
-# ---------------------------------------------------------
 logging.basicConfig(
     filename='experiment_3_latent_mae.log',
     level=logging.INFO,
@@ -37,9 +34,6 @@ transform_norm = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
-# ---------------------------------------------------------
-# 2. DATASET CLASS
-# ---------------------------------------------------------
 class MVTecAD2DynamicDataset(Dataset):
     def __init__(self, root_dir, category, split='train', status='good'):
         self.status = status
@@ -70,7 +64,7 @@ class MVTecAD2DynamicDataset(Dataset):
         image = Image.open(img_path).convert("RGB")
         w, h = image.size
         
-        # Crop to nearest multiple of 16
+
         new_w, new_h = w - (w % PATCH_SIZE), h - (h % PATCH_SIZE)
         image = image.crop((0, 0, new_w, new_h))
         pixel_values = transform_norm(image)
@@ -91,19 +85,16 @@ class MVTecAD2DynamicDataset(Dataset):
             
         return pixel_values, gt_mask, img_path
 
-# ---------------------------------------------------------
-# 3. LATENT TRANSFORMER ARCHITECTURE
-# ---------------------------------------------------------
 class LatentTransformerPredictor(torch.nn.Module):
     def __init__(self, embed_dim=768, num_layers=4, num_heads=8):
         super().__init__()
         self.embed_dim = embed_dim
         
-        # Learnable mask token
+
         self.mask_token = torch.nn.Parameter(torch.zeros(1, 1, embed_dim))
         
-        # NEW: 2D Positional Embeddings (Base grid of 64x64)
-        # We store it as (B, C, H, W) so we can dynamically resize it later
+
+
         self.pos_embed = torch.nn.Parameter(torch.randn(1, embed_dim, 64, 64) * 0.02)
         
         encoder_layer = torch.nn.TransformerEncoderLayer(
@@ -115,7 +106,7 @@ class LatentTransformerPredictor(torch.nn.Module):
             norm_first=True
         )
         
-        # NEW: Added enable_nested_tensor=False to silence the PyTorch UserWarning
+
         self.transformer = torch.nn.TransformerEncoder(
             encoder_layer, 
             num_layers=num_layers,
@@ -131,17 +122,17 @@ class LatentTransformerPredictor(torch.nn.Module):
         
         if mask_map is not None:
             mask_seq = mask_map.view(B, seq_len, 1)
-            # Replace masked locations (0.0) with mask_token
+
             x_seq = (x_seq * mask_seq) + (self.mask_token * (1.0 - mask_seq))
             
-        # NEW: Interpolate the 2D positional embeddings to match the exact H and W of the input
+
         pos_embed_resized = torch.nn.functional.interpolate(
             self.pos_embed, size=(H, W), mode='bicubic', align_corners=False
         )
-        # Flatten the resized embeddings to match our sequence
+
         pos_embed_seq = pos_embed_resized.view(1, C, seq_len).permute(0, 2, 1)
         
-        # Add spatial awareness
+
         x_seq = x_seq + pos_embed_seq
         
         out_seq = self.transformer(x_seq)
@@ -150,9 +141,6 @@ class LatentTransformerPredictor(torch.nn.Module):
         out_grid = out_seq.permute(0, 2, 1).view(B, C, H, W)
         return out_grid
 
-# ---------------------------------------------------------
-# 4. DINO EXTRACTION & INFERENCE LOGIC
-# ---------------------------------------------------------
 def extract_dino_features(model, pixel_values):
     with torch.no_grad():
         outputs = model(pixel_values)
@@ -173,7 +161,7 @@ def fast_grid_inference(feature_map, predictor, stride=2):
     with torch.no_grad():
         for row_offset in range(stride):
             for col_offset in range(stride):
-                # 1.0 = KEEP, 0.0 = MASK
+
                 mask = torch.ones((1, 1, H, W)).to(DEVICE)
                 mask[:, :, row_offset::stride, col_offset::stride] = 0.0
                 
@@ -185,9 +173,6 @@ def fast_grid_inference(feature_map, predictor, stride=2):
 
     return combined_prediction / count_map.clamp(min=1)
 
-# ---------------------------------------------------------
-# 5. METRICS 
-# ---------------------------------------------------------
 def calculate_au_pro(gt_masks, anomaly_maps, max_fpr=0.3, num_thresholds=100):
     gt_all = np.concatenate([m.flatten() for m in gt_masks])
     scores_all = np.concatenate([a.flatten() for a in anomaly_maps])
@@ -226,7 +211,7 @@ def calculate_au_pro(gt_masks, anomaly_maps, max_fpr=0.3, num_thresholds=100):
     fprs = np.array(fprs)
     pros = np.array(pros)
     
-    # Linear interpolation to fix overshoot
+
     if fprs[-1] > max_fpr:
         if len(fprs) > 1:
             pros[-1] = np.interp(max_fpr, [fprs[-2], fprs[-1]], [pros[-2], pros[-1]])
@@ -234,9 +219,6 @@ def calculate_au_pro(gt_masks, anomaly_maps, max_fpr=0.3, num_thresholds=100):
             
     return np.trapezoid(pros, fprs) / max_fpr
 
-# ---------------------------------------------------------
-# 6. PIPELINE (TRAIN + TUNE)
-# ---------------------------------------------------------
 def run_experiment_3(category):
     logging.info(f"\n{'='*50}\n=== Exp 3 (Latent MAE): {category} ===\n{'='*50}")
     
@@ -248,7 +230,7 @@ def run_experiment_3(category):
     predictor = LatentTransformerPredictor(embed_dim=768).to(DEVICE)
     optimizer = AdamW(predictor.parameters(), lr=LR)
     
-    # --- PHASE 1: TRAIN LATENT MAE ---
+
     if os.path.exists(final_model_path):
         logging.info(f"Loaded existing model from {final_model_path}")
         predictor.load_state_dict(torch.load(final_model_path, map_location=DEVICE))
@@ -264,14 +246,14 @@ def run_experiment_3(category):
                 pixel_values = pixel_values.to(DEVICE)
                 feature_map = extract_dino_features(dino_model, pixel_values)
                 
-                # Random Masking: Drop 50% of the patches
+
                 B, C, H, W = feature_map.shape
                 mask = (torch.rand((B, 1, H, W)) > 0.50).float().to(DEVICE)
                 inverse_mask = 1.0 - mask
                 
                 preds = predictor(feature_map, mask_map=mask)
                 
-                # Calculate MSE Loss ONLY on the missing patches
+
                 loss = torch.nn.functional.mse_loss(
                     preds * inverse_mask, 
                     feature_map * inverse_mask, 
@@ -288,7 +270,7 @@ def run_experiment_3(category):
         torch.save(predictor.state_dict(), final_model_path)
         logging.info("Training Complete & Saved.")
 
-    # --- PHASE 2: BASELINE STATS ---
+
     predictor.eval()
     val_dataset = MVTecAD2DynamicDataset(DATASET_ROOT, category, split='validation', status='good')
     val_loader = DataLoader(val_dataset, batch_size=1)
@@ -307,7 +289,7 @@ def run_experiment_3(category):
     sigma = np.std(np.concatenate(all_val_errors))
     logging.info(f"Baseline -> Mu: {mu:.6f} | Sigma: {sigma:.6f}")
 
-    # --- PHASE 3: EVALUATION & TUNING ---
+
     test_dataset = MVTecAD2DynamicDataset(DATASET_ROOT, category, split='test', status='bad')
     test_loader = DataLoader(test_dataset, batch_size=1)
     
@@ -333,12 +315,12 @@ def run_experiment_3(category):
             orig_img = np.clip((orig_img * [0.229, 0.224, 0.225]) + [0.485, 0.456, 0.406], 0, 1)
             viz_cache.append((os.path.basename(path[0]), orig_img, heatmap_hd, gt_mask_np))
 
-    # AU-PRO
+
     logging.info("\n--- Continuous Metrics ---")
     au_pro = calculate_au_pro(y_true_masks, y_score_maps, max_fpr=0.3)
     logging.info(f"AU-PRO (0.3): {au_pro:.4f}")
 
-    # Sigma Sweep
+
     gt_all_flat = np.concatenate([m.flatten() for m in y_true_masks])
     scores_all_flat = np.concatenate([s.flatten() for s in y_score_maps])
     
@@ -358,7 +340,7 @@ def run_experiment_3(category):
     logging.info(f"\n✅ WINNER: Sigma x{best_mult} (SegF1: {best_f1:.4f})")
     print(f"[{category}] AU-PRO: {au_pro:.4f} | Best SegF1: {best_f1:.4f} (at Sigma x{best_mult})")
 
-    # Save Visualizations
+
     out_dir = f"results/exp3_{category}_sigma_results"
     os.makedirs(out_dir, exist_ok=True)
     

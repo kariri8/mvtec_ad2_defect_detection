@@ -9,9 +9,6 @@ from transformers import AutoModel
 from sklearn.metrics import f1_score
 import logging
 from dinov3_experiment import MVTecAD2DynamicDataset, FeaturePredictor, extract_dino_features, fast_grid_inference
-
-# --- KEEP YOUR MVTecAD2DynamicDataset, FeaturePredictor, extract_dino_features, fast_grid_inference HERE ---
-
 logging.basicConfig(
     filename='experiment_2_threshold_tuning.log',
     level=logging.INFO,
@@ -55,17 +52,17 @@ def calculate_au_pro(gt_masks, anomaly_maps, max_fpr=0.3, num_thresholds=100):
         fprs.append(fpr)
         pros.append(pro_sum / num_components_total)
         
-        # Stop collecting if we cross the max_fpr boundary
+
         if fpr >= max_fpr: 
             break
             
     fprs = np.array(fprs)
     pros = np.array(pros)
     
-    # --- NEW: Fix the Overshoot by clipping exactly at max_fpr ---
+
     if fprs[-1] > max_fpr:
         if len(fprs) > 1:
-            # Linearly interpolate the exact PRO value at exactly max_fpr (0.3)
+
             pros[-1] = np.interp(max_fpr, [fprs[-2], fprs[-1]], [pros[-2], pros[-1]])
         fprs[-1] = max_fpr
             
@@ -84,7 +81,7 @@ def tune_dino_experiment(category):
     predictor.load_state_dict(torch.load(model_path, map_location="cuda"))
     predictor.eval()
     
-    # --- 1. Get Baseline Mu & Sigma (Validation Set) ---
+
     val_dataset = MVTecAD2DynamicDataset("../../data", category, split='validation', status='good')
     val_loader = DataLoader(val_dataset, batch_size=1)
     
@@ -102,7 +99,7 @@ def tune_dino_experiment(category):
     sigma = np.std(np.concatenate(all_val_errors))
     logging.info(f"Baseline -> Mu: {mu:.6f} | Sigma: {sigma:.6f}")
 
-    # --- 2. Extract Heatmaps (Test Set - Runs Once) ---
+
     test_dataset = MVTecAD2DynamicDataset("../../data", category, split='test', status='bad')
     test_loader = DataLoader(test_dataset, batch_size=1)
     
@@ -128,12 +125,12 @@ def tune_dino_experiment(category):
             orig_img = np.clip((orig_img * [0.229, 0.224, 0.225]) + [0.485, 0.456, 0.406], 0, 1)
             viz_cache.append((os.path.basename(path[0]), orig_img, heatmap_hd, gt_mask_np))
 
-    # --- 3. Calculate AU-PRO ---
+
     logging.info("\n--- Continuous Metrics ---")
     au_pro = calculate_au_pro(y_true_masks, y_score_maps, max_fpr=0.3)
     logging.info(f"AU-PRO (up to 0.3 FPR): {au_pro:.4f}")
 
-    # --- 4. Rapid Sigma Sweep (1, 3, 5, 7) ---
+
     gt_all_flat = np.concatenate([m.flatten() for m in y_true_masks])
     scores_all_flat = np.concatenate([s.flatten() for s in y_score_maps])
     
@@ -152,7 +149,7 @@ def tune_dino_experiment(category):
 
     logging.info(f"\n✅ WINNER: Sigma x{best_mult} (SegF1: {best_f1:.4f})")
 
-    # --- 5. Save Visualizations for Best Multiplier ---
+
     out_dir = f"results/exp2_{category}_sigma_results"
     os.makedirs(out_dir, exist_ok=True)
     

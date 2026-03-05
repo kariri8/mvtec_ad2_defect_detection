@@ -14,9 +14,6 @@ import logging
 import concurrent.futures
 import multiprocessing
 
-# ---------------------------------------------------------
-# 1. CONFIGURATION
-# ---------------------------------------------------------
 MAX_EPOCHS = 50 
 PATIENCE = 3
 LR = 1e-4
@@ -37,9 +34,6 @@ transform_norm = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
-# ---------------------------------------------------------
-# Isolated Logger (File Only to prevent breaking tqdm)
-# ---------------------------------------------------------
 def get_logger(category, log_dir):
     logger = logging.getLogger(category)
     if not logger.handlers:
@@ -48,12 +42,9 @@ def get_logger(category, log_dir):
         fh = logging.FileHandler(os.path.join(log_dir, f'training_{category}.log'), mode='w')
         fh.setFormatter(formatter)
         logger.addHandler(fh)
-        # REMOVED: StreamHandler (console printing) so it doesn't interfere with tqdm
+
     return logger
 
-# ---------------------------------------------------------
-# 2. DATASET CLASS
-# ---------------------------------------------------------
 class MVTecAD2DynamicDataset(Dataset):
     def __init__(self, root_dir, category, split='train', status='good'):
         self.status = status
@@ -104,9 +95,6 @@ class MVTecAD2DynamicDataset(Dataset):
             
         return pixel_values, gt_mask, img_path
 
-# ---------------------------------------------------------
-# 3. LATENT TRANSFORMER ARCHITECTURE
-# ---------------------------------------------------------
 class LatentTransformerPredictor(torch.nn.Module):
     def __init__(self, embed_dim=768, num_layers=4, num_heads=8):
         super().__init__()
@@ -143,9 +131,6 @@ class LatentTransformerPredictor(torch.nn.Module):
         out_seq = self.head(out_seq)
         return out_seq.permute(0, 2, 1).view(B, C, H, W)
 
-# ---------------------------------------------------------
-# 4. INFERENCE & METRICS
-# ---------------------------------------------------------
 def extract_dino_features(model, pixel_values):
     with torch.no_grad():
         outputs = model(pixel_values)
@@ -211,9 +196,6 @@ def calculate_au_pro(gt_masks, anomaly_maps, max_fpr=0.3, num_thresholds=100):
         fprs[-1] = max_fpr
     return np.trapezoid(pros, fprs) / max_fpr
 
-# ---------------------------------------------------------
-# 5. WORKER PIPELINE
-# ---------------------------------------------------------
 def process_category(category, gpu_id, worker_idx):
     device = f"cuda:{gpu_id}"
     
@@ -231,7 +213,7 @@ def process_category(category, gpu_id, worker_idx):
     predictor = LatentTransformerPredictor(embed_dim=768).to(device)
     optimizer = AdamW(predictor.parameters(), lr=LR)
     
-    # --- PHASE 1: TRAIN LATENT MAE ---
+
     best_model_path = os.path.join(base_checkpoint_dir, "best_latent_mae.pth")
     checkpoint_path = os.path.join(base_checkpoint_dir, "training_state.pth")
     complete_flag = os.path.join(base_checkpoint_dir, "training_complete.flag")
@@ -247,7 +229,7 @@ def process_category(category, gpu_id, worker_idx):
         best_loss = float('inf')
         patience_counter = 0
         
-        # 1. Try to resume from a proper training state
+
         if os.path.exists(checkpoint_path):
             checkpoint = torch.load(checkpoint_path, map_location=device)
             predictor.load_state_dict(checkpoint['model_state_dict'])
@@ -257,7 +239,7 @@ def process_category(category, gpu_id, worker_idx):
             patience_counter = checkpoint['patience_counter']
             log.info(f"Resuming from epoch {start_epoch} (Best Loss: {best_loss:.4f})")
             
-        # 2. Fallback for your current situation: load weights from the crash, but restart epoch counter
+
         elif os.path.exists(best_model_path):
             predictor.load_state_dict(torch.load(best_model_path, map_location=device))
             log.info("Recovered weights from interrupted run. Resuming training...")
@@ -290,7 +272,7 @@ def process_category(category, gpu_id, worker_idx):
             avg_loss = epoch_loss / len(train_loader)
             log.info(f"Epoch {epoch+1}/{MAX_EPOCHS} - Loss: {avg_loss:.4f}")
             
-            # Save resumable state at the end of every epoch
+
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': predictor.state_dict(),
@@ -310,20 +292,20 @@ def process_category(category, gpu_id, worker_idx):
                 log.info(f"Early stopping triggered at epoch {epoch+1}!")
                 break
                 
-        # Create flag file so we know training fully finished without crashing
+
         with open(complete_flag, 'w') as f:
             f.write("done")
             
         predictor.load_state_dict(torch.load(best_model_path, map_location=device))
 
-    # --- PHASE 2: BASELINE STATS ---
+
     predictor.eval()
     val_dataset = MVTecAD2DynamicDataset(DATASET_ROOT, category, split='validation', status='good')
     val_loader = DataLoader(val_dataset, batch_size=1)
     
     all_val_errors = []
     
-    # ADDED: Position-aware tqdm progress bar
+
     for pixel_values, _, _ in tqdm(val_loader, desc=f"[{category}] Baseline", position=worker_idx, leave=False):
         pixel_values = pixel_values.to(device)
         with torch.no_grad():
@@ -336,13 +318,13 @@ def process_category(category, gpu_id, worker_idx):
     sigma = np.std(np.concatenate(all_val_errors))
     log.info(f"Baseline -> Mu: {mu:.6f} | Sigma: {sigma:.6f}")
 
-    # --- PHASE 3: EVALUATION & TUNING ---
+
     test_dataset = MVTecAD2DynamicDataset(DATASET_ROOT, category, split='test', status='bad')
     test_loader = DataLoader(test_dataset, batch_size=1)
     
     y_true_masks, y_score_maps, viz_cache = [], [], []
     
-    # ADDED: Position-aware tqdm progress bar
+
     for i, (pixel_values, gt_mask, path) in enumerate(tqdm(test_loader, desc=f"[{category}] Eval", position=worker_idx, leave=False)):
         pixel_values = pixel_values.to(device)
         gt_mask_np = gt_mask.squeeze().numpy()
@@ -400,16 +382,13 @@ def process_category(category, gpu_id, worker_idx):
         "best_segf1": best_f1
     }
 
-# ---------------------------------------------------------
-# 6. MAIN ORCHESTRATOR
-# ---------------------------------------------------------
 if __name__ == "__main__":
     multiprocessing.set_start_method('spawn', force=True) 
     
     print(f"Starting parallel processing for {len(CATEGORIES)} categories...")
     print(f"Check the respective 'checkpoints/<category>' folders for detailed training logs.\n")
     
-    # Pre-allocate blank lines so tqdm doesn't push text up the screen weirdly
+
     print("\n" * MAX_CONCURRENT_WORKERS)
     
     results = []
@@ -425,7 +404,7 @@ if __name__ == "__main__":
             try:
                 res = future.result()
                 results.append(res)
-                # Use tqdm.write so the summary print doesn't break the active progress bars
+
                 tqdm.write(f"✅ Finished {cat} -> AU-PRO: {res['au_pro']:.4f} | SegF1: {res['best_segf1']:.4f} (Sigma x{res['best_sigma']})")
             except Exception as e:
                 tqdm.write(f"❌ ERROR processing category {cat}: {e}")

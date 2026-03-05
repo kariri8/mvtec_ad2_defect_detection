@@ -12,9 +12,6 @@ from torch.optim import AdamW
 from torchvision import transforms
 from sklearn.metrics import f1_score
 
-# ---------------------------------------------------------
-# 1. CONFIGURATION & LOGGING
-# ---------------------------------------------------------
 logging.basicConfig(
     filename='experiment_2_feature_predictor.log',
     level=logging.INFO,
@@ -32,15 +29,12 @@ PATCH_SIZE = 16
 CATEGORIES = ["vial", "sheet_metal"]
 DATASET_ROOT = "../../data" 
 
-# DinoV3 expects standard ImageNet normalization
+
 transform_norm = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
-# ---------------------------------------------------------
-# 2. DATASET CLASS (Dynamic Cropping, NO Resizing)
-# ---------------------------------------------------------
 class MVTecAD2DynamicDataset(Dataset):
     def __init__(self, root_dir, category, split='train', status='good'):
         self.status = status
@@ -71,7 +65,7 @@ class MVTecAD2DynamicDataset(Dataset):
         image = Image.open(img_path).convert("RGB")
         w, h = image.size
         
-        # Crop to nearest multiple of 16
+
         new_w, new_h = w - (w % PATCH_SIZE), h - (h % PATCH_SIZE)
         image = image.crop((0, 0, new_w, new_h))
         pixel_values = transform_norm(image)
@@ -92,13 +86,10 @@ class MVTecAD2DynamicDataset(Dataset):
             
         return pixel_values, gt_mask, img_path
 
-# ---------------------------------------------------------
-# 3. PREDICTOR ARCHITECTURE (CNN for dynamic grid sizes)
-# ---------------------------------------------------------
 class FeaturePredictor(torch.nn.Module):
     def __init__(self, embed_dim=768):
         super().__init__()
-        # 3x3 kernels allow the model to look at the 8 neighbors of a masked patch
+
         self.net = torch.nn.Sequential(
             torch.nn.Conv2d(embed_dim, embed_dim, kernel_size=3, padding=1),
             torch.nn.BatchNorm2d(embed_dim),
@@ -112,21 +103,18 @@ class FeaturePredictor(torch.nn.Module):
     def forward(self, x):
         return self.net(x)
 
-# ---------------------------------------------------------
-# 4. FEATURE EXTRACTION & MASKING
-# ---------------------------------------------------------
 def extract_dino_features(model, pixel_values):
     with torch.no_grad():
         outputs = model(pixel_values)
-        # DinoV3 outputs (B, Seq_Len, Dim). We extract patches, ignoring CLS/Register tokens
+
         h, w = pixel_values.shape[2], pixel_values.shape[3]
         grid_h, grid_w = h // PATCH_SIZE, w // PATCH_SIZE
         num_patches = grid_h * grid_w
         
-        # Take the last num_patches tokens (safest way to ignore prepended tokens)
+
         patch_tokens = outputs.last_hidden_state[:, -num_patches:, :]
         
-        # Reshape to (B, Dim, grid_h, grid_w)
+
         feature_map = patch_tokens.permute(0, 2, 1).reshape(1, 768, grid_h, grid_w)
     return feature_map
 
@@ -143,23 +131,20 @@ def fast_grid_inference(feature_map, predictor, stride=2):
     with torch.no_grad():
         for row_offset in range(stride):
             for col_offset in range(stride):
-                # Create a mask where every Nth patch is masked
+
                 mask = torch.ones((1, 1, H, W)).to(DEVICE)
                 mask[:, :, row_offset::stride, col_offset::stride] = 0.0
                 
                 masked_input = feature_map * mask
                 preds = predictor(masked_input)
                 
-                # Only keep the predictions for the patches that WERE masked
+
                 inv_mask = 1.0 - mask
                 combined_prediction += (preds * inv_mask)
                 count_map += inv_mask
 
     return combined_prediction / count_map.clamp(min=1)
 
-# ---------------------------------------------------------
-# 5. METRICS (AU-PRO)
-# ---------------------------------------------------------
 def calculate_au_pro(gt_masks, anomaly_maps, max_fpr=0.3):
     gt_all = np.concatenate([m.flatten() for m in gt_masks])
     scores_all = np.concatenate([a.flatten() for a in anomaly_maps])
@@ -194,26 +179,23 @@ def calculate_au_pro(gt_masks, anomaly_maps, max_fpr=0.3):
             
     return np.trapezoid(pros, fprs) / max_fpr
 
-# ---------------------------------------------------------
-# 6. TRAINING, THRESHOLDING & EVALUATION
-# ---------------------------------------------------------
 def run_experiment(category):
     logging.info(f"=== Starting Experiment 2: Feature Predictor for {category} ===")
     
-    # 1. Setup Checkpoint Directories
+
     base_checkpoint_dir = f"checkpoints/exp2_{category}"
     final_model_path = os.path.join(base_checkpoint_dir, "final_predictor.pth")
     os.makedirs(base_checkpoint_dir, exist_ok=True)
     
-    # Load DinoV3 (Frozen)
+
     dino_model = AutoModel.from_pretrained("facebook/dinov3-vitb16-pretrain-lvd1689m").to(DEVICE)
     dino_model.eval()
     
-    # Initialize Predictor
+
     predictor = FeaturePredictor(embed_dim=768).to(DEVICE)
     optimizer = AdamW(predictor.parameters(), lr=LR)
     
-    # --- PHASE 1: TRAIN OR LOAD ---
+
     if os.path.exists(final_model_path):
         logging.info(f"Found fully trained predictor at {final_model_path}. Loading weights...")
         predictor.load_state_dict(torch.load(final_model_path, map_location=DEVICE))
@@ -229,7 +211,7 @@ def run_experiment(category):
                 pixel_values = pixel_values.to(DEVICE)
                 feature_map = extract_dino_features(dino_model, pixel_values)
                 
-                # Random masking: Mask 15% of features
+
                 mask = (torch.rand(feature_map.shape[-2:]) > 0.15).float().to(DEVICE)
                 mask = mask.view(1, 1, feature_map.shape[2], feature_map.shape[3])
 
@@ -251,17 +233,17 @@ def run_experiment(category):
                 
             logging.info(f"Epoch {epoch+1} Loss: {epoch_loss/len(train_loader):.4f}")
             
-            # Intermediate Checkpoints (Save every 5 epochs)
+
             if (epoch + 1) % 5 == 0:
                 checkpoint_path = os.path.join(base_checkpoint_dir, f"predictor_epoch_{epoch+1}.pth")
                 torch.save(predictor.state_dict(), checkpoint_path)
                 logging.info(f"Intermediate checkpoint saved to {checkpoint_path}")
                 
-        # Save Final Model
+
         torch.save(predictor.state_dict(), final_model_path)
         logging.info(f"Final predictor saved securely to {final_model_path}")
         
-    # --- PHASE 2: THRESHOLDING ---
+
     logging.info("Calculating Threshold...")
     val_dataset = MVTecAD2DynamicDataset(DATASET_ROOT, category, split='validation', status='good')
     val_loader = DataLoader(val_dataset, batch_size=1)
@@ -274,7 +256,7 @@ def run_experiment(category):
         feature_map = extract_dino_features(dino_model, pixel_values)
         predicted_map = fast_grid_inference(feature_map, predictor)
         
-        # Cosine Distance (1 - Cosine Sim). Shape: (1, H_grid, W_grid)
+
         cos_sim = torch.nn.functional.cosine_similarity(feature_map, predicted_map, dim=1)
         dist_map = (1.0 - cos_sim).squeeze().cpu().numpy()
         all_errors.append(dist_map.flatten())
@@ -284,7 +266,7 @@ def run_experiment(category):
     threshold = mu + 3 * sigma
     logging.info(f"Threshold: {threshold:.6f}")
     
-    # --- PHASE 3: EVALUATION ---
+
     logging.info("Evaluating on Test Set...")
     test_dataset = MVTecAD2DynamicDataset(DATASET_ROOT, category, split='test', status='bad')
     test_loader = DataLoader(test_dataset, batch_size=1)
@@ -303,7 +285,7 @@ def run_experiment(category):
         cos_sim = torch.nn.functional.cosine_similarity(feature_map, predicted_map, dim=1)
         dist_map = (1.0 - cos_sim).squeeze().cpu().numpy()
         
-        # Upsample the feature grid heatmap back to the HD image resolution
+
         heatmap_hd = cv2.resize(dist_map, (orig_w, orig_h), interpolation=cv2.INTER_CUBIC)
         
         binary_pred = (heatmap_hd > threshold).astype(np.uint8)
@@ -312,7 +294,7 @@ def run_experiment(category):
         y_score_maps.append(heatmap_hd)
         y_pred_binary.append(binary_pred.flatten())
         
-        # Save Visualization (4-panel)
+
         if i < 5:
             orig_img = pixel_values.squeeze().cpu().permute(1,2,0).numpy()
             orig_img = np.clip((orig_img *[0.229, 0.224, 0.225]) +[0.485, 0.456, 0.406], 0, 1)
