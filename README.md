@@ -1,1 +1,0 @@
-# mvtec_ad2_defect_detection
