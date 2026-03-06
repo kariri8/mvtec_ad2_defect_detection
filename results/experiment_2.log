@@ -1,0 +1,34 @@
+2026-03-04 11:40:22,431 - 
+==================================================
+=== Tuning Exp 2 (DINO): vial ===
+==================================================
+2026-03-04 11:40:22,831 - HTTP Request: HEAD https://huggingface.co/facebook/dinov3-vitb16-pretrain-lvd1689m/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-03-04 11:41:27,204 - Baseline -> Mu: 0.011792 | Sigma: 0.011850
+2026-03-04 11:44:15,943 - 
+--- Continuous Metrics ---
+2026-03-04 11:46:22,859 - AU-PRO (up to 0.3 FPR): 0.8876
+2026-03-04 11:46:23,845 - 
+--- Sigma Sweep (SegF1) ---
+2026-03-04 11:46:54,778 - Sigma x1 | Thresh: 0.023642 | SegF1: 0.2218
+2026-03-04 11:47:26,452 - Sigma x3 | Thresh: 0.047341 | SegF1: 0.3153
+2026-03-04 11:47:56,158 - Sigma x5 | Thresh: 0.071041 | SegF1: 0.2542
+2026-03-04 11:48:29,032 - Sigma x7 | Thresh: 0.094741 | SegF1: 0.1823
+2026-03-04 11:48:29,032 - 
+✅ WINNER: Sigma x3 (SegF1: 0.3153)
+2026-03-04 11:48:42,871 - 
+==================================================
+=== Tuning Exp 2 (DINO): sheet_metal ===
+==================================================
+2026-03-04 11:48:43,286 - HTTP Request: HEAD https://huggingface.co/facebook/dinov3-vitb16-pretrain-lvd1689m/resolve/main/config.json "HTTP/1.1 200 OK"
+2026-03-04 11:49:56,957 - Baseline -> Mu: 0.030938 | Sigma: 0.012190
+2026-03-04 11:55:05,776 - 
+--- Continuous Metrics ---
+2026-03-04 11:57:48,638 - AU-PRO (up to 0.3 FPR): 0.4746
+2026-03-04 11:57:50,462 - 
+--- Sigma Sweep (SegF1) ---
+2026-03-04 11:58:36,065 - Sigma x1 | Thresh: 0.043128 | SegF1: 0.0164
+2026-03-04 11:59:21,937 - Sigma x3 | Thresh: 0.067507 | SegF1: 0.0464
+2026-03-04 12:00:06,753 - Sigma x5 | Thresh: 0.091886 | SegF1: 0.1533
+2026-03-04 12:00:51,602 - Sigma x7 | Thresh: 0.116265 | SegF1: 0.0871
+2026-03-04 12:00:51,602 - 
+✅ WINNER: Sigma x5 (SegF1: 0.1533)
