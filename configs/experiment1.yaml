@@ -1,0 +1,21 @@
+# configs/experiment1.yaml
+# Experiment 1: ViT-MAE pixel-space reconstruction
+
+device: "cuda"
+data_root: "data"
+checkpoint_dir: "experiments/src/experiment_1/checkpoints"
+results_dir: "experiments/src/experiment_1/results"
+
+backbone: "facebook/vit-mae-base"
+image_size: 224
+epochs: 15
+batch_size: 8
+lr: 1.0e-4
+mask_ratio: 0.15          # fraction of patches masked during training
+sigma_multipliers: [1, 3, 5, 7]
+
+categories:
+  - vial
+  - sheet_metal
+
+seed: 42
