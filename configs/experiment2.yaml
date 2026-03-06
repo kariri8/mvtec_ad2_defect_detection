@@ -1,0 +1,19 @@
+# configs/experiment2.yaml
+# Experiment 2: Frozen DINOv3 + CNN feature predictor
+
+device: "cuda"
+data_root: "data"
+checkpoint_dir: "experiments/src/experiment_2/checkpoints"
+results_dir: "experiments/src/experiment_2/results"
+
+backbone: "facebook/dinov3-vitb16-pretrain-lvd1689m"
+epochs: 15
+lr: 1.0e-4
+mask_ratio: 0.15          # fraction of feature tokens masked during training
+sigma_multipliers: [1, 3, 5, 7]
+
+categories:
+  - vial
+  - sheet_metal
+
+seed: 42
