@@ -29,8 +29,7 @@ mvtec_ad2/
 ├── tests/                      # Unit tests (pytest)
 │   ├── test_metrics.py
 │   └── test_models.py
-├── notebooks/                  # Exploratory notebooks (optional)
-├── results/                    # Saved metrics, plots, logs (gitignored)
+├── results/                    # Saved metrics, plots, logs
 ├── Makefile                    # One-command shortcuts
 ├── requirements.txt
 ├── pyproject.toml              # Ruff linter config
