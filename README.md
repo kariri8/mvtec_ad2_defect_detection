@@ -71,7 +71,15 @@ data/
         ├── good/
         └── ground_truth/bad/
 ```
+### 3. Model Checkpoints
 
+Trained checkpoints are hosted on Hugging Face:
+👉 https://huggingface.co/kariri8/mvtec-ad2-checkpoints
+
+Download automatically:
+```bash
+python checkpoints/download_checkpoints.py
+```
 ---
 
 ## Training
