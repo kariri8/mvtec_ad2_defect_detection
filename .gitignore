@@ -28,8 +28,6 @@ experiments/src/experiment_2/checkpoints/
 experiments/src/experiment_3/checkpoints/
 
 # Generated results and logs
-results/
-*.log
 *.txt
 !README.md
 
