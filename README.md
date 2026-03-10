@@ -198,10 +198,10 @@ Scales Experiment 3 to all 8 categories with early stopping (patience=3, max 50 
 Sample outputs from Experiment 3 (original | heatmap | binary prediction | ground truth):
 
 **Sheet Metal:**
-![Sheet Metal](experiments/src/experiment_3/results/exp3_sheet_metal_sigma_results/000_regular.png)
+![Sheet Metal](results/plots_experiment3/exp3_sheet_metal_sigma_results/000_regular.png)
 
 **Vial:**
-![Vial](experiments/src/experiment_3/results/exp3_vial_sigma_results/000_regular.png)
+![Vial](results/plots_experiment3/exp3_vial_sigma_results/000_regular.png)
 
 ---
 
